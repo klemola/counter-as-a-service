@@ -7,8 +7,10 @@ extern crate rocket_contrib;
 #[macro_use]
 extern crate serde_derive;
 
+use rocket::http::Method;
 use rocket::State;
 use rocket_contrib::json::{Json, JsonValue};
+use rocket_cors::{AllowedHeaders, AllowedOrigins};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -89,7 +91,13 @@ fn decrement_counter(id: String, map: State<CounterMap>) -> Option<Json<Counter>
 
     let counter = hashmap
         .entry(parsed_uuid)
-        .and_modify(|contents| contents.value -= 1)
+        .and_modify(|contents| {
+            if contents.value > 0 {
+                contents.value -= 1
+            } else {
+                ()
+            }
+        })
         .or_insert(Counter {
             id: parsed_uuid,
             value: 0,
@@ -101,6 +109,19 @@ fn decrement_counter(id: String, map: State<CounterMap>) -> Option<Json<Counter>
 // Setup
 
 fn rocket() -> rocket::Rocket {
+    let cors = rocket_cors::CorsOptions {
+        allowed_origins: AllowedOrigins::All,
+        allowed_methods: vec![Method::Options, Method::Get, Method::Post, Method::Put]
+            .into_iter()
+            .map(From::from)
+            .collect(),
+        allowed_headers: AllowedHeaders::some(&["Accept", "Content-Type"]),
+        allow_credentials: true,
+        ..Default::default()
+    }
+    .to_cors()
+    .unwrap();
+
     rocket::ignite()
         .mount("/", routes![index])
         .mount(
@@ -113,6 +134,7 @@ fn rocket() -> rocket::Rocket {
                 decrement_counter
             ],
         )
+        .attach(cors)
         .register(catchers![not_found])
         .manage(Mutex::new(HashMap::<Uuid, Counter>::new()))
 }
